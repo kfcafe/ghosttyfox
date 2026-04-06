@@ -1,128 +1,151 @@
 # Ghosttyfox
 
-> A real terminal in a Firefox tab, powered by [Ghostty](https://ghostty.org)'s WASM terminal engine.
+A real terminal in a Firefox tab, powered by Ghostty's WASM terminal engine and a local native host.
 
-Click a button → get a terminal tab running your actual shell. No remote servers. No web terminals. Your local shell, rendered with Ghostty's battle-tested VT100 parser.
+Ghosttyfox is a small Firefox extension plus Rust native-messaging host that opens your real local shell in a browser tab. It is built for people who like browser-centric workflows and want a terminal beside docs, dashboards, chat tools, and local coding agent TUIs without leaving Firefox.
+
+## Why it exists
+
+Ghosttyfox is for workflows where the browser is already the main workspace:
+
+- keeping a terminal in the same window as web docs and apps
+- pairing well with Tree Style Tabs and other tab-heavy setups
+- running local coding agent TUIs next to browser-based tools
+- getting a real PTY-backed shell instead of a fake in-browser terminal
+
+The terminal is local. No remote service is involved. Firefox talks to a native host over native messaging, and that host runs your shell in a PTY on your machine.
 
 ## Architecture
 
-```
-┌──────────────────────────────┐      ┌──────────────────────────┐
-│  Firefox Tab                 │      │  Native Host (Rust)      │
-│                              │      │                          │
-│  ghostty-web (WASM)          │◄────►│  PTY management          │
-│  Canvas renderer             │ JSON │  Shell spawning ($SHELL) │
-│  Input handling              │      │  Resize support          │
-│                              │      │                          │
-│  Native Messaging bridge     │      │  stdio protocol          │
-└──────────────────────────────┘      └──────────────────────────┘
+```text
+Firefox tab
+  ├── Ghosttyfox extension page
+  ├── ghostty-web terminal renderer
+  └── native messaging port
+            ↓
+Rust native host
+  ├── Firefox stdio framing
+  ├── PTY management
+  ├── shell process
+  └── resize + output relay
 ```
 
-The extension has two parts:
-
-1. **Firefox extension** — opens a full-page terminal in a new tab using [ghostty-web](https://github.com/coder/ghostty-web), Ghostty's VT100 parser compiled to WebAssembly
-2. **Native host** — a small Rust binary that spawns a PTY, runs your shell, and bridges I/O over Firefox's [native messaging](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/Native_messaging) protocol
+`ghostty-web` provides the Ghostty-based terminal engine in the browser. The Rust host handles shell spawn, PTY I/O, and resize events.
 
 ## Requirements
 
-- Firefox (any recent version)
-- [Rust](https://rustup.rs/) (for building the native host)
-- [Node.js](https://nodejs.org/) 18+ and npm (for bundling the extension)
-- macOS (Linux support planned)
+- macOS
+- Firefox
+- Node.js 18+ and npm
+- Rust toolchain via `rustup`
 
-## Quick Start
+## Install
 
 ```bash
-# Clone and install
-cd ghosttyfox
 npm install
-
-# Build everything and register with Firefox
 bash scripts/install.sh
-
-# Load in Firefox:
-# 1. Open about:debugging#/runtime/this-firefox
-# 2. Click "Load Temporary Add-on"
-# 3. Select extension/manifest.json (in the dist/ folder after build)
 ```
+
+The install script:
+
+- builds the Rust host in release mode
+- bundles the extension into `extension/dist/`
+- writes the Firefox native messaging manifest to:
+  `~/Library/Application Support/Mozilla/NativeMessagingHosts/ghosttyfox.json`
+
+Then load the extension temporarily in Firefox:
+
+1. Open `about:debugging#/runtime/this-firefox`
+2. Click **Load Temporary Add-on...**
+3. Select `extension/manifest.json`
+
+After that, click the toolbar button to open a terminal tab.
 
 ## Development
 
 ```bash
-# Build native host (debug) + bundle extension + launch Firefox with web-ext
 bash scripts/dev.sh
 ```
 
-## How It Works
+The dev script:
 
-1. You click the toolbar button
-2. The extension opens `terminal.html` as a new tab
-3. `terminal.js` initializes ghostty-web (loads WASM, creates Terminal + FitAddon)
-4. It connects to the native host via `browser.runtime.connectNative()`
-5. The native host spawns your `$SHELL` in a PTY
-6. Keystrokes flow: Terminal → extension → native host → PTY
-7. Output flows: PTY → native host → extension → Terminal (base64-encoded)
-8. Resize events keep the PTY dimensions in sync
+- builds the Rust host in debug mode
+- bundles the extension
+- writes the native messaging manifest for the debug binary
+- launches Firefox with `web-ext`
 
-### Message Protocol
+You can also run the build step by itself:
 
-Extension → Host:
-```json
-{"type": "input", "data": "ls -la\n"}
-{"type": "resize", "cols": 120, "rows": 36}
+```bash
+npm run build
 ```
 
-Host → Extension:
-```json
-{"type": "output", "data": "<base64-encoded bytes>"}
-{"type": "exit", "code": 0}
-{"type": "error", "message": "..."}
-```
+## Project layout
 
-## Project Structure
-
-```
+```text
 ghosttyfox/
 ├── extension/
-│   ├── manifest.json       Firefox extension manifest (MV2)
-│   ├── background.js       Toolbar button → open terminal tab
-│   ├── terminal.html       Full-page terminal container
-│   ├── terminal.js         ghostty-web + native messaging bridge
-│   └── terminal.css        Dark theme, full viewport
+│   ├── background.js
+│   ├── manifest.json
+│   ├── terminal.css
+│   ├── terminal.html
+│   ├── terminal.js
+│   └── dist/
 ├── native-host/
 │   ├── Cargo.toml
 │   └── src/
-│       ├── main.rs         Entry point
-│       ├── protocol.rs     Native messaging frame I/O
-│       └── pty.rs          PTY session management
+│       ├── main.rs
+│       ├── protocol.rs
+│       └── pty.rs
+├── native-manifest/
+│   └── ghosttyfox.json
 ├── scripts/
-│   ├── build.js            esbuild bundler for extension
-│   ├── install.sh          Build + register native host
-│   └── dev.sh              Dev workflow with web-ext
-├── package.json
+│   ├── bundle.js
+│   ├── dev.sh
+│   └── install.sh
 └── README.md
 ```
 
 ## Troubleshooting
 
-**Extension won't load WASM:**
-Check that `content_security_policy` in manifest.json includes `'wasm-eval'`.
+### Native host not found
 
-**Native host not found:**
-Run `scripts/install.sh` to register the native messaging manifest. Check that the binary path in `~/Library/Application Support/Mozilla/NativeMessagingHosts/ghosttyfox.json` is correct.
+Re-run `bash scripts/install.sh` and inspect:
 
-**Terminal connects but shows nothing:**
-Check the browser console for errors. The native host logs to stderr — run it manually to debug:
+`~/Library/Application Support/Mozilla/NativeMessagingHosts/ghosttyfox.json`
+
+Make sure the `path` points at a real `ghosttyfox-host` binary.
+
+### The extension loads but no terminal output appears
+
+Open the Firefox extension page console and check for native messaging errors. Then verify the host built successfully:
+
 ```bash
-echo '{"type":"resize","cols":80,"rows":24}' | python3 -c "
-import struct, sys
-msg = sys.stdin.read().encode()
-sys.stdout.buffer.write(struct.pack('<I', len(msg)) + msg)
-" | ./native-host/target/debug/ghosttyfox-host
+cargo build --manifest-path native-host/Cargo.toml
 ```
 
-**Resize doesn't work:**
-Make sure the FitAddon is loaded and `observeResize()` is called.
+### WASM asset fails to load
+
+Re-run:
+
+```bash
+npm run build
+```
+
+and confirm these files exist:
+
+- `extension/dist/terminal.bundle.js`
+- `extension/dist/ghostty-vt.wasm`
+
+### Resize feels wrong
+
+Ghosttyfox sends terminal size changes from the browser page to the PTY. If sizing looks stale, reload the extension page or restart the debug session so both the extension bundle and native host are refreshed.
+
+## Notes
+
+- Firefox support currently targets Manifest V2.
+- This project is macOS-first for now.
+- One native host process is used per terminal tab.
 
 ## License
 

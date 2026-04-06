@@ -1,4 +1,6 @@
 node_modules/
 dist/
 target/
+extension/dist/
+*.wasm
 .DS_Store

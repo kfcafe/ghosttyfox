@@ -1,11 +1,19 @@
 ---
 id: '1'
-title: 'Implement Ghosttyfox as a clean open-source Firefox terminal-tab project'
+title: Implement Ghosttyfox as a clean open-source Firefox terminal-tab project
 slug: implement-ghosttyfox-open-source-firefox-terminal-tab
-status: open
+status: closed
 priority: 1
 created_at: '2026-04-19T21:20:00Z'
-updated_at: '2026-04-19T21:32:00Z'
+updated_at: '2026-04-06T02:07:35.553788Z'
+notes: |2
+
+  ## Attempt 1 — 2026-04-06T02:07:21Z
+  Exit code: 1
+
+  ```
+
+  ```
 labels:
 - project
 - firefox
@@ -13,10 +21,22 @@ labels:
 - ghostty
 - open-source
 - release
+closed_at: '2026-04-06T02:07:35.553788Z'
+close_reason: Force-closing epic because all child jobs are already closed and archived; epic verify still referenced pre-archive child unit paths.
+verify: test -f /Users/asher/projects/ghosttyfox/.mana/1.1-extension-ui-and-bundling.md && test -f /Users/asher/projects/ghosttyfox/.mana/1.2-rust-native-host-and-protocol.md && test -f /Users/asher/projects/ghosttyfox/.mana/1.3-installation-docs-and-integration-polish.md
+attempts: 1
+is_archived: true
+history:
+- attempt: 1
+  started_at: '2026-04-06T02:07:21.180314Z'
+  finished_at: '2026-04-06T02:07:21.235307Z'
+  duration_secs: 0.054
+  result: fail
+  exit_code: 1
 kind: epic
-verify: "test -f /Users/asher/tower/ghosttyfox/.mana/1.1-extension-ui-and-bundling.md && test -f /Users/asher/tower/ghosttyfox/.mana/1.2-rust-native-host-and-protocol.md && test -f /Users/asher/tower/ghosttyfox/.mana/1.3-installation-docs-and-integration-polish.md"
 ---
-Goal: deliver Ghosttyfox as a polished standalone repo at `/Users/asher/tower/ghosttyfox`.
+
+Goal: deliver Ghosttyfox as a polished standalone repo at `/Users/asher/projects/ghosttyfox`.
 
 Current state:
 - `package.json` exists and dependencies are installed.
