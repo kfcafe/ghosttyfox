@@ -1,7 +1,7 @@
 {
   "name": "ghosttyfox",
   "description": "Ghosttyfox native messaging host",
-  "path": "/ABSOLUTE/PATH/TO/ghosttyfox-host",
+  "path": "/ABSOLUTE/PATH/TO/native-host/ghosttyfox-host",
   "type": "stdio",
   "allowed_extensions": ["ghosttyfox@tower.dev"]
 }

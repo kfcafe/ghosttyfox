@@ -1,0 +1,144 @@
+#!/usr/bin/env python3
+"""Ghosttyfox native messaging host — spawns a PTY and bridges I/O with Firefox."""
+
+import base64
+import fcntl
+import json
+import os
+import pty
+import select
+import signal
+import struct
+import sys
+import termios
+
+# ── Native messaging protocol ────────────────────────────────────────────────
+
+def read_message():
+    """Read a length-prefixed JSON message from stdin."""
+    raw = sys.stdin.buffer.read(4)
+    if len(raw) < 4:
+        return None
+    length = struct.unpack("<I", raw)[0]
+    payload = sys.stdin.buffer.read(length)
+    if len(payload) < length:
+        return None
+    return json.loads(payload)
+
+
+def write_message(msg):
+    """Write a length-prefixed JSON message to stdout."""
+    payload = json.dumps(msg, separators=(",", ":")).encode()
+    sys.stdout.buffer.write(struct.pack("<I", len(payload)))
+    sys.stdout.buffer.write(payload)
+    sys.stdout.buffer.flush()
+
+
+def send_output(data_bytes):
+    write_message({"type": "output", "data": base64.b64encode(data_bytes).decode()})
+
+
+def send_error(message):
+    write_message({"type": "error", "message": message})
+
+
+def send_exit(code):
+    write_message({"type": "exit", "code": code})
+
+
+# ── PTY management ───────────────────────────────────────────────────────────
+
+def set_pty_size(fd, cols, rows):
+    """Set the terminal dimensions on a PTY file descriptor."""
+    winsize = struct.pack("HHHH", rows, cols, 0, 0)
+    fcntl.ioctl(fd, termios.TIOCSWINSZ, winsize)
+
+
+def spawn_shell(cols=80, rows=24):
+    """Fork a PTY running the user's shell. Returns (master_fd, child_pid)."""
+    shell = os.environ.get("SHELL", "/bin/sh")
+    env = os.environ.copy()
+    env["TERM"] = "xterm-256color"
+
+    pid, master_fd = pty.fork()
+
+    if pid == 0:
+        # Child — exec the shell
+        os.execvpe(shell, [shell], env)
+    else:
+        # Parent — set initial size
+        set_pty_size(master_fd, cols, rows)
+        return master_fd, pid
+
+
+# ── Main loop ────────────────────────────────────────────────────────────────
+
+def main():
+    master_fd, child_pid = spawn_shell()
+
+    stdin_fd = sys.stdin.buffer.fileno()
+    running = True
+
+    while running:
+        try:
+            readable, _, _ = select.select([master_fd, stdin_fd], [], [], 0.1)
+        except (OSError, ValueError):
+            break
+
+        # PTY output → extension
+        if master_fd in readable:
+            try:
+                data = os.read(master_fd, 4096)
+                if not data:
+                    running = False
+                    break
+                send_output(data)
+            except OSError:
+                running = False
+                break
+
+        # Extension messages → PTY
+        if stdin_fd in readable:
+            msg = read_message()
+            if msg is None:
+                running = False
+                break
+
+            msg_type = msg.get("type")
+
+            if msg_type == "input":
+                data = msg.get("data", "")
+                try:
+                    os.write(master_fd, data.encode())
+                except OSError as e:
+                    send_error(f"PTY write failed: {e}")
+
+            elif msg_type == "resize":
+                cols = msg.get("cols", 80)
+                rows = msg.get("rows", 24)
+                try:
+                    set_pty_size(master_fd, cols, rows)
+                except OSError as e:
+                    send_error(f"Resize failed: {e}")
+
+            else:
+                send_error(f"Unknown message type: {msg_type}")
+
+    # Clean up
+    try:
+        os.close(master_fd)
+    except OSError:
+        pass
+
+    try:
+        _, status = os.waitpid(child_pid, 0)
+        exit_code = os.WEXITSTATUS(status) if os.WIFEXITED(status) else 1
+    except ChildProcessError:
+        exit_code = 0
+
+    send_exit(exit_code)
+
+
+if __name__ == "__main__":
+    signal.signal(signal.SIGCHLD, signal.SIG_DFL)
+    main()

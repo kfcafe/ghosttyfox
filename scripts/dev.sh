@@ -3,15 +3,30 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
-MANIFEST_DIR="${HOME}/Library/Application Support/Mozilla/NativeMessagingHosts"
+HOST_PATH="${PROJECT_DIR}/native-host/ghosttyfox-host"
+
+# Detect platform for manifest directory
+case "$(uname -s)" in
+  Darwin)
+    MANIFEST_DIR="${HOME}/Library/Application Support/Mozilla/NativeMessagingHosts"
+    ;;
+  Linux)
+    MANIFEST_DIR="${HOME}/.mozilla/native-messaging-hosts"
+    ;;
+  *)
+    echo "Unsupported platform: $(uname -s)" >&2
+    exit 1
+    ;;
+esac
+
 MANIFEST_PATH="${MANIFEST_DIR}/ghosttyfox.json"
-HOST_PATH="${PROJECT_DIR}/native-host/target/debug/ghosttyfox-host"
 
 mkdir -p "${MANIFEST_DIR}"
 
-cargo build --manifest-path "${PROJECT_DIR}/native-host/Cargo.toml"
+# Bundle extension
 npm --prefix "${PROJECT_DIR}" run build
 
+# Write native messaging manifest
 cat > "${MANIFEST_PATH}" <<EOF
 {
   "name": "ghosttyfox",
@@ -22,5 +37,6 @@ cat > "${MANIFEST_PATH}" <<EOF
 }
 EOF
 
+# Launch Firefox with web-ext
 cd "${PROJECT_DIR}"
 npx web-ext run --source-dir extension

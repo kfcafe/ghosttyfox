@@ -3,15 +3,36 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
-MANIFEST_DIR="${HOME}/Library/Application Support/Mozilla/NativeMessagingHosts"
+HOST_PATH="${PROJECT_DIR}/native-host/ghosttyfox-host"
+
+# Detect platform for manifest directory
+case "$(uname -s)" in
+  Darwin)
+    MANIFEST_DIR="${HOME}/Library/Application Support/Mozilla/NativeMessagingHosts"
+    ;;
+  Linux)
+    MANIFEST_DIR="${HOME}/.mozilla/native-messaging-hosts"
+    ;;
+  *)
+    echo "Unsupported platform: $(uname -s)" >&2
+    exit 1
+    ;;
+esac
+
 MANIFEST_PATH="${MANIFEST_DIR}/ghosttyfox.json"
-HOST_PATH="${PROJECT_DIR}/native-host/target/release/ghosttyfox-host"
+
+# Verify Python 3 is available
+if ! command -v python3 &>/dev/null; then
+  echo "Error: python3 is required but not found in PATH." >&2
+  exit 1
+fi
 
 mkdir -p "${MANIFEST_DIR}"
 
-cargo build --release --manifest-path "${PROJECT_DIR}/native-host/Cargo.toml"
+# Bundle the extension
 npm --prefix "${PROJECT_DIR}" run build
 
+# Write native messaging manifest
 cat > "${MANIFEST_PATH}" <<EOF
 {
   "name": "ghosttyfox",
@@ -23,7 +44,8 @@ cat > "${MANIFEST_PATH}" <<EOF
 EOF
 
 cat <<EOF
-Installed Ghosttyfox native host manifest:
+
+✓ Installed Ghosttyfox native host manifest:
   ${MANIFEST_PATH}
 
 Next steps:
